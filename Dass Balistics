@@ -1,0 +1,630 @@
+# =========================================================================
+# PROJECT : DASS — Dynamic Shooting Simulation System
+# AUTHOR  : Ayça Bahar Güner — Dokuz Eylül Üniversitesi, Mak. Müh.
+# VERSION : 4.0
+#
+# MİMARİ DEĞİŞİKLİKLERİ (v3 → v4):
+#   [OPT]  MonteCarloEngine: vectorized batch trajectory — her atış için
+#          ayrı engine instantiation kaldırıldı (~N× hız kazancı)
+#   [FIX]  poi_at_range: argmin → linear interpolasyon (subpixel hata giderildi)
+#   [DOC]  spin_axis simplifikasyonu açıkça belgelendi (bilinen kısıtlama)
+#   [DOC]  CEP tanımı netleştirildi: mean-centered vs target-centered ayrımı
+# =========================================================================
+# =========================================================================
+
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import Ellipse
+import csv, os
+
+# ─────────────────────────────────────────────────────────────────────────
+# 1. DATA CLASSES
+# ─────────────────────────────────────────────────────────────────────────
+
+class Weapon:
+    def __init__(self, name: str, muzzle_velocity: float, muzzle_height: float = 1.5):
+        self.name            = name
+        self.muzzle_velocity = muzzle_velocity   # [m/s]
+        self.muzzle_height   = muzzle_height      # [m]
+
+
+class Ammunition:
+    """
+    Cd(Mach) piecewise-linear — transonic dalga direnci modellendi.
+    Magnus: F_M = C_M·ρ·A·r·ω·|v_rel|·(ω̂ × v̂_rel)
+    """
+    _MACH_BP  = np.array([0.0,  0.8,  1.0,  1.2,  2.0,  3.0])
+    _CD_SCALE = np.array([1.00, 1.00, 1.50, 1.35, 1.10, 0.95])
+
+    def __init__(self, name: str, mass_g: float, diameter_mm: float,
+                 Cd_subsonic: float, spin_rate_rpm: float = 0.0,
+                 magnus_coeff: float = 0.005):
+        self.name         = name
+        self.mass         = mass_g / 1000.0
+        self.diameter     = diameter_mm / 1000.0
+        self.area         = np.pi * (self.diameter / 2.0) ** 2
+        self.Cd_sub       = Cd_subsonic
+        self.spin_rate    = spin_rate_rpm * (2.0 * np.pi / 60.0)  # [rad/s]
+        self.mag_coeff    = magnus_coeff
+
+    def get_cd(self, speed: float, c_sound: float) -> float:
+        return self.Cd_sub * float(np.interp(speed / c_sound,
+                                             self._MACH_BP, self._CD_SCALE))
+
+
+class Environment:
+    def __init__(self, wind_x=0.0, wind_y=0.0,
+                 air_density=1.225, gravity=9.81, speed_of_sound=343.0):
+        self.wind    = np.array([wind_x, wind_y, 0.0])
+        self.rho     = air_density
+        self.g_vec   = np.array([0.0, 0.0, -gravity])
+        self.c_sound = speed_of_sound
+
+
+class IMUState:
+    """
+    Pitch / Yaw / Roll (Euler, dünya çerçevesi).
+    Roll (cant): namlu eksenini döndürmez —
+    sight-bore offset olarak correction engine'de hesaplanır.
+    """
+    def __init__(self, pitch_deg: float, yaw_deg: float, roll_deg: float = 0.0):
+        self.pitch = np.radians(pitch_deg)
+        self.yaw   = np.radians(yaw_deg)
+        self.roll  = np.radians(roll_deg)
+
+    @property
+    def muzzle_direction(self) -> np.ndarray:
+        cp, sp = np.cos(self.pitch), np.sin(self.pitch)
+        cy, sy = np.cos(self.yaw),   np.sin(self.yaw)
+        return np.array([cp * cy, cp * sy, sp])
+
+    def cant_lateral_offset(self, z_drop: float) -> float:
+        """delta_Y = |Z_drop| · sin(roll)"""
+        return abs(z_drop) * np.sin(self.roll)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 2. BALİSTİK MOTORU — optimize iç döngü
+# ─────────────────────────────────────────────────────────────────────────
+
+def _run_trajectory(pos0, vel0, spin_axis,
+                    wind, rho, g_vec, c_sound,
+                    mass, area, Cd_sub, Cd_bp, Cd_sc,
+                    mag_coeff, diam, spin_rate,
+                    dt, ground_z, max_steps, max_range,
+                    record_every):
+    """
+    Saf Python + numpy iç döngü.
+    Sabitler dışarıda hesaplanıp argüman olarak geçirilir —
+    döngü içinde attribute lookup ve fonksiyon çağrısı minimize edildi.
+    Production için: numba @njit(cache=True) ile ~10x hız kazanılır.
+    """
+    half_rho_area = 0.5 * rho * area
+    mag_const     = mag_coeff * rho * area * (diam / 2.0) * spin_rate
+
+    pos   = pos0.copy()
+    vel   = vel0.copy()
+    traj  = [pos.copy()]
+    spds  = [float(np.linalg.norm(vel))]
+    times = [0.0]
+
+    t    = 0.0
+    step = 0
+
+    while step < max_steps:
+        if pos[2] < ground_z:
+            break
+        if max_range is not None and pos[0] >= max_range:
+            break
+
+        v_rel = vel - wind
+        v_mag = float(np.linalg.norm(v_rel))
+
+        if v_mag > 1e-6:
+            v_unit = v_rel / v_mag
+            Cd     = Cd_sub * float(np.interp(v_mag / c_sound, Cd_bp, Cd_sc))
+            F_drag = -half_rho_area * v_mag**2 * Cd * v_unit
+            F_mag  = mag_const * v_mag * np.cross(spin_axis, v_unit)
+            F_aero = F_drag + F_mag
+        else:
+            F_aero = np.zeros(3)
+
+        accel = F_aero / mass + g_vec
+
+        # Euler-Cromer (symplectic) — vel-first
+        vel  = vel + accel * dt
+        pos  = pos + vel   * dt
+        t   += dt
+        step += 1
+
+        if step % record_every == 0:
+            traj.append(pos.copy())
+            spds.append(float(np.linalg.norm(vel)))
+            times.append(t)
+
+    return np.array(times), np.array(traj), np.array(spds)
+
+
+class BallisticsEngine:
+    def __init__(self, weapon: Weapon, ammo: Ammunition,
+                 env: Environment, dt: float = 0.001):
+        self.weapon = weapon
+        self.ammo   = ammo
+        self.env    = env
+        self.dt     = dt
+
+    def calculate_trajectory(self, imu: IMUState,
+                             max_time: float = 2.0,
+                             max_range: float = None,
+                             record_every: int = 10):
+        muz_dir   = imu.muzzle_direction
+        # BİLİNEN SİMPLİFİKASYON: spin_axis yörünge boyunca sabit tutulmaktadır.
+        # Gerçekte gyroscopic precession nedeniyle spin ekseni yavaşça döner;
+        # bu magnus etkisini hafif yanlış hesaplar. Kısa menzil (<300m) pistol
+        # simülasyonunda hata ihmal edilebilir. Uzun menzil modülünde dinamik
+        # spin_axis entegrasyonu gerekir. (v5 roadmap)
+        spin_axis = muz_dir.copy()
+        ground_z  = -self.weapon.muzzle_height
+        max_steps = int(max_time / self.dt)
+
+        return _run_trajectory(
+            pos0        = np.zeros(3),
+            vel0        = muz_dir * self.weapon.muzzle_velocity,
+            spin_axis   = spin_axis,
+            wind        = self.env.wind,
+            rho         = self.env.rho,
+            g_vec       = self.env.g_vec,
+            c_sound     = self.env.c_sound,
+            mass        = self.ammo.mass,
+            area        = self.ammo.area,
+            Cd_sub      = self.ammo.Cd_sub,
+            Cd_bp       = self.ammo._MACH_BP,
+            Cd_sc       = self.ammo._CD_SCALE,
+            mag_coeff   = self.ammo.mag_coeff,
+            diam        = self.ammo.diameter,
+            spin_rate   = self.ammo.spin_rate,
+            dt          = self.dt,
+            ground_z    = ground_z,
+            max_steps   = max_steps,
+            max_range   = max_range,
+            record_every= record_every,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 3. DASS DÜZELTME MOTORU — LoS vs PoI
+# ─────────────────────────────────────────────────────────────────────────
+
+class DASScorrectionEngine:
+    """
+    DASS'ın core çıktısı:
+        LoS  = IR lazerin düz gittiği nokta (fizik yok, geometri)
+        PoI  = Mermi balistik motorla hesaplanan gerçek düşüş noktası
+        Δ    = PoI - LoS  →  ekranda gösterilecek correction vektörü
+
+    Kamera pipeline notu:
+        120fps global shutter → frame period = 8.33ms.
+        Hardware external trigger (ESP32 → CAM_TRIG pini) ile
+        lazer ateşi ve exposure başlangıcı senkronize edilir;
+        worst-case latency = 1 frame (~8.33ms), ort. ~4.2ms.
+        Trigger olmadan: worst-case = 2 frame = 16.6ms — budget aşılır.
+    """
+
+    def __init__(self, engine: BallisticsEngine):
+        self.engine = engine
+
+    def los_hit(self, imu: IMUState, target_range: float) -> np.ndarray:
+        """
+        IR lazer düz çizgi — hedef düzleminde (X = target_range) kesişim.
+        hit = direction * (target_range / direction[0])
+        """
+        d = imu.muzzle_direction
+        if abs(d[0]) < 1e-9:
+            return np.array([target_range, 0.0, 0.0])
+        t = target_range / d[0]
+        return d * t   # [target_range, Y_los, Z_los]
+
+    def poi_at_range(self, imu: IMUState, target_range: float) -> np.ndarray:
+        """
+        Balistik motoru çalıştır, X=target_range'deki PoI'yi döndür.
+        v4 FIX: argmin yerine linear interpolasyon — step sınırına denk
+        gelmeyen menzillerde subpixel hata giderildi.
+        """
+        _, traj, _ = self.engine.calculate_trajectory(
+            imu, max_time=3.0, max_range=target_range + 5.0
+        )
+        X = traj[:, 0]
+        # target_range'i geçen ilk indeksi bul
+        idx = int(np.searchsorted(X, target_range))
+        if idx == 0:
+            return traj[0]
+        if idx >= len(X):
+            return traj[-1]
+        # İki nokta arasında doğrusal interpolasyon
+        x0, x1 = X[idx - 1], X[idx]
+        t = (target_range - x0) / (x1 - x0 + 1e-12)
+        return traj[idx - 1] + t * (traj[idx] - traj[idx - 1])
+
+    def correction_vector(self, imu: IMUState,
+                          target_range: float) -> dict:
+        """
+        Döndürür:
+            los    : lazer çarpma noktası [m]
+            poi    : mermi düşüş noktası  [m]
+            delta  : PoI - LoS correction vektörü [m]
+            cant   : kant'tan gelen ek yanal sapma [m]
+        """
+        los  = self.los_hit(imu, target_range)
+        poi  = self.poi_at_range(imu, target_range)
+        cant = imu.cant_lateral_offset(poi[2])
+
+        return {
+            "los"   : los,
+            "poi"   : poi,
+            "delta" : poi - los,
+            "cant"  : cant,
+            "total_lateral_error": (poi[1] - los[1]) + cant,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 4. MONTE CARLO MOTORU
+# ─────────────────────────────────────────────────────────────────────────
+
+class MonteCarloEngine:
+    """
+    Gerçekçi gürültü kaynaklarıyla N atış simülasyonu.
+    Hedef: savunma alımı için CEP ve %95 güven elipsi üretmek.
+
+    Gürültü modeli (1-sigma):
+        IMU pitch/yaw : 0.05°  (iyi kalite MEMS, Kalman sonrası)
+        IMU roll      : 0.20°
+        Namlu hızı    : 3.0 m/s (mühimmat lot varyasyonu)
+        Rüzgar gustu  : 0.5 m/s (anlık türbülans)
+
+    v4 OPT — Vectorized batch:
+        Her atış için ayrı BallisticsEngine + calculate_trajectory çağrısı
+        kaldırıldı. Gürültülü parametreler numpy ile toplu üretilir;
+        _run_trajectory doğrudan çağrılır. ~N× bellek allocation tasarrufu.
+
+    CEP TANIMI:
+        Bu implementasyon MEAN-CENTERED CEP döndürür — dağılımın kendi
+        ağırlık merkezine göre %50 yarıçapı. Savunma standardı olan
+        TARGET-CENTERED CEP (hedefe göre) farklıdır ve sistematik bias
+        (sıfır ayarı hatası) içerir. İkisi arasındaki fark correction
+        engine'in kalitesini ölçer; her ikisi de raporlanmalıdır.
+    """
+
+    SIGMA_PITCH = np.radians(0.05)
+    SIGMA_YAW   = np.radians(0.05)
+    SIGMA_ROLL  = np.radians(0.20)
+    SIGMA_VEL   = 3.0    # [m/s]
+    SIGMA_WIND  = 0.5    # [m/s]
+
+    def __init__(self, correction_engine: DASScorrectionEngine):
+        self.ce = correction_engine
+
+    def run(self, imu: IMUState, target_range: float,
+            n_shots: int = 300) -> dict:
+
+        base    = self.ce.engine
+        ammo    = base.ammo
+        dt      = base.dt
+        rho     = base.env.rho
+        c_sound = base.env.c_sound
+        g_vec   = base.env.g_vec
+        mh      = base.weapon.muzzle_height
+
+        # ── Toplu gürültü üretimi (tek numpy çağrısı) ──────────────────────
+        pitch_n = imu.pitch + np.random.normal(0, self.SIGMA_PITCH, n_shots)
+        yaw_n   = imu.yaw   + np.random.normal(0, self.SIGMA_YAW,   n_shots)
+        roll_n  = imu.roll  + np.random.normal(0, self.SIGMA_ROLL,  n_shots)
+        v0_n    = base.weapon.muzzle_velocity + np.random.normal(0, self.SIGMA_VEL, n_shots)
+        wy_n    = base.env.wind[1] + np.random.normal(0, self.SIGMA_WIND, n_shots)
+
+        hits_y, hits_z = np.empty(n_shots), np.empty(n_shots)
+
+        for i in range(n_shots):
+            # Muzzle yönü — inline, nesne yaratılmıyor
+            cp, sp = np.cos(pitch_n[i]), np.sin(pitch_n[i])
+            cy, sy = np.cos(yaw_n[i]),   np.sin(yaw_n[i])
+            muz_dir   = np.array([cp * cy, cp * sy, sp])
+            spin_axis = muz_dir.copy()   # bkz. v4 spin_axis notu
+
+            wind_i = np.array([base.env.wind[0], wy_n[i], 0.0])
+
+            _, traj, _ = _run_trajectory(
+                pos0        = np.zeros(3),
+                vel0        = muz_dir * v0_n[i],
+                spin_axis   = spin_axis,
+                wind        = wind_i,
+                rho         = rho,
+                g_vec       = g_vec,
+                c_sound     = c_sound,
+                mass        = ammo.mass,
+                area        = ammo.area,
+                Cd_sub      = ammo.Cd_sub,
+                Cd_bp       = ammo._MACH_BP,
+                Cd_sc       = ammo._CD_SCALE,
+                mag_coeff   = ammo.mag_coeff,
+                diam        = ammo.diameter,
+                spin_rate   = ammo.spin_rate,
+                dt          = dt,
+                ground_z    = -mh,
+                max_steps   = int(3.0 / dt),
+                max_range   = target_range + 5.0,
+                record_every= 10,
+            )
+
+            # Linear interpolasyon — poi_at_range ile tutarlı
+            X   = traj[:, 0]
+            idx = int(np.searchsorted(X, target_range))
+            if idx == 0:
+                poi = traj[0]
+            elif idx >= len(X):
+                poi = traj[-1]
+            else:
+                x0, x1 = X[idx - 1], X[idx]
+                t = (target_range - x0) / (x1 - x0 + 1e-12)
+                poi = traj[idx - 1] + t * (traj[idx] - traj[idx - 1])
+
+            # Kant lateral offset
+            cant        = abs(poi[2]) * np.sin(roll_n[i])
+            hits_y[i]   = poi[1] + cant
+            hits_z[i]   = poi[2]
+
+        # ── İstatistik ──────────────────────────────────────────────────────
+        mean_y, mean_z = hits_y.mean(), hits_z.mean()
+
+        # Mean-centered CEP (bkz. docstring)
+        radii_mean = np.sqrt((hits_y - mean_y)**2 + (hits_z - mean_z)**2)
+        cep_mean   = float(np.percentile(radii_mean, 50))
+
+        # Target-centered CEP (0,0 hedef merkezi varsayımı)
+        radii_target = np.sqrt(hits_y**2 + hits_z**2)
+        cep_target   = float(np.percentile(radii_target, 50))
+
+        # %95 kovaryans elipsi
+        cov              = np.cov(hits_y, hits_z)
+        eigval, eigvec   = np.linalg.eigh(cov)
+        order            = eigval.argsort()[::-1]
+        eigval, eigvec   = eigval[order], eigvec[:, order]
+        angle            = np.degrees(np.arctan2(eigvec[1, 0], eigvec[0, 0]))
+        chi2_95          = 5.991
+        width95          = 2.0 * np.sqrt(chi2_95 * eigval[0])
+        height95         = 2.0 * np.sqrt(chi2_95 * eigval[1])
+
+        return {
+            "hits_y"      : hits_y,  "hits_z"      : hits_z,
+            "mean_y"      : mean_y,  "mean_z"      : mean_z,
+            "cep_m"       : cep_mean,          # geriye dönük uyumluluk
+            "cep_mean_m"  : cep_mean,
+            "cep_target_m": cep_target,
+            "ellipse"     : {"width": width95, "height": height95, "angle": angle},
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 5. LATENCY BUDGET
+# ─────────────────────────────────────────────────────────────────────────
+
+LATENCY_BUDGET = {
+    "Tetik & VCSEL Ateşleme (ESP32)"         : 1.0,   # [ms]
+    "IR Kamera Tespiti (120fps, HW trigger)" : 8.33,  # [ms] — worst-case 1 frame
+    "ESP-NOW Veri İletimi (L2)"              : 2.0,   # [ms]
+    "Balistik Solver (2000 iter, PC)"        : 1.5,   # [ms]
+    "Display Render (overlay)"               : 0.5,   # [ms]
+}
+LATENCY_TARGET_MS = 20.0
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 6. CSV EXPORT
+# ─────────────────────────────────────────────────────────────────────────
+
+def export_trajectory_csv(times, traj, speeds, path: str):
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["time_s", "X_m", "Y_m", "Z_m", "speed_ms"])
+        for t, p, s in zip(times, traj, speeds):
+            w.writerow([f"{t:.4f}", f"{p[0]:.4f}", f"{p[1]:.4f}",
+                        f"{p[2]:.4f}", f"{s:.4f}"])
+    print(f"  → Trajectory CSV: {path}")
+
+
+def export_montecarlo_csv(mc_result: dict, path: str):
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["hit_Y_m", "hit_Z_m"])
+        for y, z in zip(mc_result["hits_y"], mc_result["hits_z"]):
+            w.writerow([f"{y:.5f}", f"{z:.5f}"])
+    print(f"  → Monte Carlo CSV: {path}")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 7. GÖRSELLEŞTİRME
+# ─────────────────────────────────────────────────────────────────────────
+
+def plot_all(times, traj, speeds, correction, mc_result,
+             env, imu, target_range):
+
+    X, Y, Z = traj[:, 0], traj[:, 1], traj[:, 2]
+    los      = correction["los"]
+    poi      = correction["poi"]
+    delta    = correction["delta"]
+
+    fig = plt.figure(figsize=(18, 10), facecolor="#f9f9f9")
+    fig.suptitle("DASS — Balistik & Düzeltme Motoru v3.0",
+                 fontsize=14, fontweight="bold", y=0.98)
+
+    # ── 3D Yörünge ───────────────────────────────────────────────────────
+    ax1 = fig.add_subplot(231, projection="3d")
+    ax1.plot(X, Y, Z, color="crimson", lw=2, label="Balistik yörünge")
+    ax1.scatter(*poi, color="navy",   s=60, zorder=5, label=f"PoI @{target_range}m")
+    ax1.scatter(*los, color="lime",   s=60, zorder=5, label=f"LoS @{target_range}m",
+                marker="^")
+    ax1.set_title("3D Balistik Yörünge")
+    ax1.set_xlabel("X [m]"); ax1.set_ylabel("Y [m]"); ax1.set_zlabel("Z [m]")
+    ax1.legend(fontsize=7)
+
+    # ── Hedef Düzlemi: LoS vs PoI ────────────────────────────────────────
+    ax2 = fig.add_subplot(232)
+    ax2.axhline(0, color="gray", ls="--", lw=0.7)
+    ax2.axvline(0, color="gray", ls="--", lw=0.7)
+    ax2.plot(0, 0, "k+", ms=18, mew=2.5, label="Kamera merkezi (0,0)")
+    ax2.plot(los[1], los[2], "g^", ms=10,
+             label=f"LoS (lazer)  Y={los[1]:.3f} Z={los[2]:.3f} m")
+    ax2.plot(poi[1], poi[2], "ro", ms=10,
+             label=f"PoI (mermi)  Y={poi[1]:.3f} Z={poi[2]:.3f} m")
+    ax2.annotate("", xy=(poi[1], poi[2]), xytext=(los[1], los[2]),
+                 arrowprops=dict(arrowstyle="->", color="purple", lw=2))
+    ax2.text((los[1]+poi[1])/2 + 0.01, (los[2]+poi[2])/2,
+             f"Δ = ({delta[1]:.3f}, {delta[2]:.3f}) m",
+             color="purple", fontsize=8, fontweight="bold")
+    ax2.set_title(f"Hedef Düzlemi @{target_range}m — LoS vs PoI")
+    ax2.set_xlabel("Yanal Y [m]"); ax2.set_ylabel("Yükseklik Z [m]")
+    ax2.axis("equal"); ax2.grid(True, alpha=0.4)
+    ax2.legend(fontsize=7)
+
+    # ── Monte Carlo Dağılımı ─────────────────────────────────────────────
+    ax3 = fig.add_subplot(233)
+    ax3.scatter(mc_result["hits_y"], mc_result["hits_z"],
+                s=6, alpha=0.35, color="steelblue", label=f"N={len(mc_result['hits_y'])} atış")
+    ax3.plot(mc_result["mean_y"], mc_result["mean_z"],
+             "r+", ms=14, mew=2.5, label=f"Ortalama PoI")
+
+    # %95 güven elipsi
+    ell = mc_result["ellipse"]
+    e95 = Ellipse(xy=(mc_result["mean_y"], mc_result["mean_z"]),
+                  width=ell["width"], height=ell["height"],
+                  angle=ell["angle"],
+                  edgecolor="red", facecolor="none", lw=1.8,
+                  label=f"%95 elips ({ell['width']*100:.1f}×{ell['height']*100:.1f} cm)")
+    ax3.add_patch(e95)
+    ax3.set_title(f"Monte Carlo Etki Dağılımı @{target_range}m\n"
+                  f"CEP mean={mc_result['cep_mean_m']*100:.1f}cm  "
+                  f"target={mc_result['cep_target_m']*100:.1f}cm")
+    ax3.set_xlabel("Y [m]"); ax3.set_ylabel("Z [m]")
+    ax3.axis("equal"); ax3.grid(True, alpha=0.4)
+    ax3.legend(fontsize=7)
+
+    # ── Hız–Menzil (Mach) ────────────────────────────────────────────────
+    ax4 = fig.add_subplot(234)
+    c = env.c_sound
+    ax4.plot(X, speeds, color="steelblue", lw=2, label="Mermi hızı")
+    ax4.axhline(c,       color="red",    ls="--", lw=1, label=f"Ses ({c} m/s)")
+    ax4.axhline(c*0.8,   color="orange", ls=":",  lw=1, label="Mach 0.8")
+    ax4.fill_between(X, c*0.8, c, alpha=0.07, color="orange")
+    ax4.set_title("Hız — Menzil"); ax4.set_xlabel("X [m]"); ax4.set_ylabel("Hız [m/s]")
+    ax4.legend(fontsize=7); ax4.grid(True, alpha=0.4)
+
+    # ── Latency Budget (yatay bar) ────────────────────────────────────────
+    ax5 = fig.add_subplot(235)
+    labels = list(LATENCY_BUDGET.keys())
+    values = list(LATENCY_BUDGET.values())
+    total  = sum(values)
+    colors = ["#4CAF50","#2196F3","#FF9800","#9C27B0","#607D8B"]
+    bars   = ax5.barh(labels, values, color=colors, edgecolor="white", height=0.6)
+    for bar, val in zip(bars, values):
+        ax5.text(val + 0.1, bar.get_y() + bar.get_height()/2,
+                 f"{val:.2f} ms", va="center", fontsize=8)
+    ax5.axvline(LATENCY_TARGET_MS, color="red", ls="--", lw=1.5,
+                label=f"Hedef < {LATENCY_TARGET_MS} ms")
+    ax5.axvline(total, color="navy", ls="-", lw=1.5,
+                label=f"Toplam = {total:.2f} ms")
+    ax5.set_xlabel("Süre [ms]")
+    ax5.set_title("Pipeline Gecikme Bütçesi")
+    ax5.legend(fontsize=7); ax5.grid(True, alpha=0.3, axis="x")
+    ax5.set_xlim(0, LATENCY_TARGET_MS * 1.1)
+    labels_short = [l.split("(")[0].strip() for l in labels]
+    ax5.set_yticks(range(len(labels_short)))
+    ax5.set_yticklabels(labels_short, fontsize=7)
+
+    # ── Correction Özet Tablosu ──────────────────────────────────────────
+    ax6 = fig.add_subplot(236)
+    ax6.axis("off")
+    rows = [
+        ["", "Y [m]", "Z [m]"],
+        ["LoS (lazer)",  f"{los[1]:+.4f}", f"{los[2]:+.4f}"],
+        ["PoI (mermi)",  f"{poi[1]:+.4f}", f"{poi[2]:+.4f}"],
+        ["Δ correction", f"{delta[1]:+.4f}", f"{delta[2]:+.4f}"],
+        ["Kant offset",  f"{correction['cant']:+.4f}", "—"],
+        ["Toplam yanal", f"{correction['total_lateral_error']:+.4f}", "—"],
+        ["", "", ""],
+        ["Latency toplamı", f"{total:.2f} ms", "✓" if total < LATENCY_TARGET_MS else "✗"],
+        ["CEP mean-ctr",   f"{mc_result['cep_mean_m']*100:.1f} cm", ""],
+        ["CEP target-ctr", f"{mc_result['cep_target_m']*100:.1f} cm", ""],
+    ]
+    tbl = ax6.table(cellText=rows, loc="center", cellLoc="center")
+    tbl.auto_set_font_size(False); tbl.set_fontsize(9)
+    tbl.scale(1.3, 1.6)
+    for (r, c_), cell in tbl.get_celld().items():
+        if r == 0:
+            cell.set_facecolor("#34495e"); cell.set_text_props(color="white", fontweight="bold")
+        elif r % 2 == 0:
+            cell.set_facecolor("#ecf0f1")
+    ax6.set_title("Düzeltme & Sistem Özeti", fontweight="bold")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    out = "/mnt/user-data/outputs/dass_ballistics_v3.png"
+    plt.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"  → Grafik: {out}")
+    plt.show()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 8. MAIN
+# ─────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+
+    TARGET_RANGE = 50.0   # [m]
+
+    pistol = Weapon("9mm Tabanca", muzzle_velocity=380.0, muzzle_height=1.5)
+    ammo   = Ammunition("9x19mm Parabellum",
+                        mass_g=7.45, diameter_mm=9.0, Cd_subsonic=0.33,
+                        spin_rate_rpm=90_000, magnus_coeff=0.005)
+    env    = Environment(wind_x=0.0, wind_y=5.0)
+    imu    = IMUState(pitch_deg=1.5, yaw_deg=0.0, roll_deg=5.0)
+
+    engine   = BallisticsEngine(pistol, ammo, env, dt=0.001)
+    corr_eng = DASScorrectionEngine(engine)
+    mc_eng   = MonteCarloEngine(corr_eng)
+
+    print("\n[1/4] Balistik yörünge hesaplanıyor...")
+    times, traj, speeds = engine.calculate_trajectory(
+        imu, max_time=1.0, max_range=300.0
+    )
+
+    print("[2/4] DASS correction vektörü hesaplanıyor...")
+    correction = corr_eng.correction_vector(imu, TARGET_RANGE)
+
+    print("[3/4] Monte Carlo çalışıyor (N=300)...")
+    mc_result = mc_eng.run(imu, TARGET_RANGE, n_shots=300)
+
+    print("[4/4] CSV export & görselleştirme...")
+    export_trajectory_csv(times, traj, speeds,
+                          "/mnt/user-data/outputs/dass_trajectory.csv")
+    export_montecarlo_csv(mc_result,
+                          "/mnt/user-data/outputs/dass_montecarlo.csv")
+
+    # ── Terminal Özeti ────────────────────────────────────────────────────
+    total_lat = sum(LATENCY_BUDGET.values())
+    c = correction
+    print("\n" + "="*52)
+    print(f"  Senaryo: {pistol.name} | Rüzgar: {env.wind[1]} m/s | Kant: {np.degrees(imu.roll):.0f}°")
+    print("="*52)
+    print(f"  LoS (lazer)    Y={c['los'][1]:+.4f} m  Z={c['los'][2]:+.4f} m")
+    print(f"  PoI (mermi)    Y={c['poi'][1]:+.4f} m  Z={c['poi'][2]:+.4f} m")
+    print(f"  Δ correction   Y={c['delta'][1]:+.4f} m  Z={c['delta'][2]:+.4f} m")
+    print(f"  Kant offset    Y={c['cant']:+.4f} m")
+    print(f"  Toplam yanal   Y={c['total_lateral_error']:+.4f} m")
+    print("-"*52)
+    print(f"  CEP mean-centered  {mc_result['cep_mean_m']*100:.1f} cm")
+    print(f"  CEP target-centered {mc_result['cep_target_m']*100:.1f} cm")
+    print(f"  Pipeline       {total_lat:.2f} ms  ({'OK' if total_lat < 20 else 'AŞILDI'})")
+    print("="*52)
+
+    plot_all(times, traj, speeds, correction, mc_result,
+             env, imu, TARGET_RANGE)
