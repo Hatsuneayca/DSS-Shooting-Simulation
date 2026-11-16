@@ -61,7 +61,10 @@ No physical prototype, measured hardware performance, field evaluation, certific
 ├── .github/ISSUE_TEMPLATE/
 ├── docs/
 │   ├── BUDGET_AND_BOM_TEMPLATE.md
+│   ├── LEGACY_SCOPE_NOTE.md
+│   ├── PRODUCT_POSITIONING.md
 │   ├── PRODUCT_REQUIREMENTS.md
+│   ├── PROJECT_BRIEF.md
 │   ├── ROADMAP.md
 │   ├── SYSTEM_ARCHITECTURE.md
 │   └── VALIDATION_PLAN.md
@@ -101,6 +104,7 @@ The proposed work moves through requirements definition, concept selection, CAD 
 - [Product Positioning and Differentiation](docs/PRODUCT_POSITIONING.md)
 - [Legacy Scope Note](docs/LEGACY_SCOPE_NOTE.md)
 - [Product Requirements](docs/PRODUCT_REQUIREMENTS.md)
+- [Proof-of-Concept Brief](docs/PROJECT_BRIEF.md)
 - [Validation Plan](docs/VALIDATION_PLAN.md)
 - [Six-Month Roadmap](docs/ROADMAP.md)
 - [Budget and BOM Template](docs/BUDGET_AND_BOM_TEMPLATE.md)
