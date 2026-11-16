@@ -74,6 +74,18 @@ python dass_ballistics_v4.py
 
 Outputs: trajectory CSV, Monte Carlo scatter CSV, summary plot.
 
+## Feedback & Technical Review
+
+Feedback is welcome from engineers, researchers, and users reviewing the DASS repository. To keep reports actionable, please use one of the structured GitHub issue forms:
+
+- [Technical Review](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/issues/new?template=technical-review.yml) — software architecture, numerical methods, model assumptions, validation, and documentation.
+- [Bug Report](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/issues/new?template=bug-report.yml) — reproducible software or documentation problems.
+- [Research Feedback](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/issues/new?template=research-feedback.yml) — methodology, reproducibility, validation design, and relevant literature.
+
+Please include enough context to reproduce or assess your observation. Keep submissions focused on the repository's software and simulation scope, and do not post personal data, credentials, or sensitive operational information. Existing reports can be reviewed and discussed in the repository's [Issues](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/issues) tab.
+
+---
+
 ## Changelog
 
 |Version|Key Changes                                                                                                                                         |
