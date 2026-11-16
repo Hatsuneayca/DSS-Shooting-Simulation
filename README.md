@@ -98,6 +98,8 @@ The script creates fictional battery, enclosure-temperature, connection and sens
 The proposed work moves through requirements definition, concept selection, CAD and enclosure development, a low-risk electronics demonstrator, software integration, bench testing, and cost and maintainability analysis.
 
 - [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
+- [Product Positioning and Differentiation](docs/PRODUCT_POSITIONING.md)
+- [Legacy Scope Note](docs/LEGACY_SCOPE_NOTE.md)
 - [Product Requirements](docs/PRODUCT_REQUIREMENTS.md)
 - [Validation Plan](docs/VALIDATION_PLAN.md)
 - [Six-Month Roadmap](docs/ROADMAP.md)
