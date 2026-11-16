@@ -21,8 +21,8 @@ python -m software.dass_telemetry_demo --duration 120 --interval 5 --seed 17 --r
 
 - `DeviceConfig`: explicit, validated assumptions for a generic electronic device.
 - `DeviceHealthSimulator`: creates deterministic synthetic battery, enclosure-temperature, connection and sensor-status records.
-- `ScenarioMonteCarloEvaluator`: repeats the synthetic scenario using independent seeds and summarizes the resulting variation.
-- CSV export functions: write telemetry, session summaries and scenario results for later review.
+- `ScenarioMonteCarloEvaluator`: repeats the synthetic scenario with independent seeds and summarizes the resulting variation.
+- CSV export functions: write telemetry, session summaries, individual scenario trials and aggregate scenario statistics.
 
 ## Output files
 
@@ -31,4 +31,4 @@ python -m software.dass_telemetry_demo --duration 120 --interval 5 --seed 17 --r
 - `scenario_trials.csv`: one row per repeated synthetic scenario.
 - `scenario_summary.csv`: aggregate statistics across the repeated scenarios.
 
-All probabilities, battery drain values and temperature changes are illustrative software assumptions. They are not measured failure rates, battery specifications, thermal predictions or field reliability claims. The code does not connect to hardware, control actuators, or calculate weapon-operation, aiming, trajectory, impact or recoil information.
+All probabilities, battery-drain values and temperature changes are illustrative software assumptions. They are not measured failure rates, battery specifications, thermal predictions or field-reliability claims. The code does not connect to hardware, control actuators, or calculate weapon-operation, aiming, trajectory, impact or recoil information.
