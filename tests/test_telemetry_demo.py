@@ -19,6 +19,10 @@ class TelemetryDemoTests(unittest.TestCase):
         self.assertEqual(len(samples), 5)
         self.assertEqual(samples[0].event, "SESSION_START")
 
+    def test_includes_exact_final_timestamp_for_non_divisible_duration(self):
+        samples = simulate_session(duration_s=22, sample_period_s=5)
+        self.assertEqual(samples[-1].elapsed_s, 22)
+
     def test_rejects_invalid_duration(self):
         with self.assertRaises(ValueError):
             simulate_session(duration_s=0)
