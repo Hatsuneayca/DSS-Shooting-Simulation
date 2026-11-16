@@ -1,0 +1,72 @@
+name: Bug Report
+description: Report a reproducible problem in the DASS code or documentation.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report issues that can be reproduced in this repository. Before submitting, check whether the issue has already been reported. Remove personal data, access tokens, and private paths from logs or screenshots.
+  - type: input
+    id: file
+    attributes:
+      label: Affected file or component
+      placeholder: "dass_ballistics_v4.py"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "v4 / commit SHA"
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Runtime environment
+      description: Include operating system, Python version, and relevant package versions.
+      placeholder: "Windows 11, Python 3.12, NumPy x.y"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reproducible sequence.
+      placeholder: |
+        1. Install the listed dependencies.
+        2. Run the relevant script.
+        3. Observe the error.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "What did you expect the software to do?"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: "What happened instead? Include the exact error message if available."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Optional. Redact usernames, private file paths, tokens, and other sensitive information.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I checked existing issues for duplicates.
+          required: true
+        - label: I removed personal or sensitive information from this report.
+          required: true
