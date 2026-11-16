@@ -43,7 +43,7 @@ A future management layer for training staff to review device availability, batt
 | Initial system concept | Documented |
 | Structured feedback and peer-review forms | Added to GitHub |
 | Product requirements and architecture | Draft documentation added |
-| Synthetic device-health telemetry demo | Implemented in Python |
+| Synthetic device-health session and scenario-analysis demo | Implemented in Python |
 | Automated tests for the synthetic demo | Added |
 | CAD and enclosure prototype | Not yet completed |
 | Electronics prototype | Not yet completed |
@@ -94,13 +94,14 @@ Optional parameters:
 python -m software.dass_telemetry_demo --duration 120 --interval 5 --seed 17 --output outputs/demo_session.csv
 ```
 
-The script creates fictional battery, enclosure-temperature, connection and sensor-health records. The output is repeatable for a fixed seed. It does not connect to or control physical hardware.
+The script creates fictional battery, enclosure-temperature, connection and sensor-health records, plus repeated scenario-analysis summaries using independent seeds. It exports four CSV files. The output is repeatable for fixed seeds. It does not connect to or control physical hardware.
 
 ## 6. Research and validation
 
 The proposed work moves through requirements definition, concept selection, CAD and enclosure development, a low-risk electronics demonstrator, software integration, bench testing, and cost and maintainability analysis.
 
 - [System Architecture](docs/SYSTEM_ARCHITECTURE.md)
+- [Code Reuse Map](docs/CODE_REUSE_MAP.md)
 - [Product Positioning and Differentiation](docs/PRODUCT_POSITIONING.md)
 - [Legacy Scope Note](docs/LEGACY_SCOPE_NOTE.md)
 - [Product Requirements](docs/PRODUCT_REQUIREMENTS.md)
