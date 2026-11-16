@@ -1,0 +1,70 @@
+name: Technical Review
+description: Submit a structured engineering or software review of DASS.
+title: "[Technical Review]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for constructive feedback on the simulation software, numerical implementation, system architecture, documentation, or reproducibility. Please keep the review focused on the repository and its stated simulation scope.
+  - type: dropdown
+    id: review_area
+    attributes:
+      label: Review area
+      description: Which part of the project are you reviewing?
+      options:
+        - Software architecture
+        - Numerical methods and simulation stability
+        - Sensor and data handling
+        - Model assumptions and limitations
+        - Validation and reproducibility
+        - Documentation and usability
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version, commit, or file reviewed
+      description: Include a version, commit hash, or relevant file path when available.
+      placeholder: "v4 / commit SHA / dass_ballistics_v4.py"
+    validations:
+      required: false
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary of your review
+      description: State the main observation or conclusion.
+      placeholder: "The implementation appears to..."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Technical reasoning or evidence
+      description: Explain the reasoning and include equations, test results, or code references where relevant.
+      placeholder: "Relevant assumptions, calculations, observations, or reproducible evidence..."
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Assumptions, limitations, or open questions
+      description: Identify uncertainties that affect your assessment.
+    validations:
+      required: false
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Link relevant papers, standards, documentation, or other sources.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Review checklist
+      options:
+        - label: I have focused this review on the repository's software and simulation scope.
+          required: true
+        - label: I have avoided including personal data, credentials, or sensitive operational information.
+          required: true
