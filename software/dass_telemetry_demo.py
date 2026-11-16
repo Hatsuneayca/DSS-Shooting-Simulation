@@ -44,8 +44,10 @@ def simulate_session(
     if sample_period_s <= 0 or sample_period_s > duration_s:
         raise ValueError("sample_period_s must be positive and no greater than duration_s.")
 
-    sample_count = duration_s // sample_period_s + 1
-    if sample_count > 3601:
+    timestamps = list(range(0, duration_s, sample_period_s))
+    if not timestamps or timestamps[-1] != duration_s:
+        timestamps.append(duration_s)
+    if len(timestamps) > 3601:
         raise ValueError("Requested session would generate too many records.")
 
     rng = random.Random(seed)
@@ -53,8 +55,7 @@ def simulate_session(
     temperature = 23.0
     samples: List[TelemetrySample] = []
 
-    for index in range(sample_count):
-        elapsed = min(index * sample_period_s, duration_s)
+    for index, elapsed in enumerate(timestamps):
         if index:
             battery = max(0.0, battery - rng.uniform(0.02, 0.08))
             temperature = min(
