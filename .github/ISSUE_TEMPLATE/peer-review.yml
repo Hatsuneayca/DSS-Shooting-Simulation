@@ -1,0 +1,120 @@
+name: Peer Review
+description: Submit an independent, structured review of DASS software quality, reproducibility, documentation, and responsible-use safeguards.
+title: "[Peer Review]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reviewing DASS. Please assess the repository at a specific commit and keep feedback within software quality, reproducibility, documentation, and safe simulation practice.
+
+        This public issue form is not a formal certification or confidential review channel. Do not submit personal data, credentials, private datasets, or sensitive operational information. Do not include instructions intended to improve real-world weapon accuracy, targeting, range, lethality, construction, or operation. Use synthetic or software-only examples.
+  - type: input
+    id: reviewed_revision
+    attributes:
+      label: Reviewed version or commit
+      description: A commit SHA is preferred so the review can be reproduced.
+      placeholder: "Commit SHA / release tag"
+    validations:
+      required: true
+  - type: dropdown
+    id: reviewer_perspective
+    attributes:
+      label: Reviewer perspective
+      description: Select the perspective most relevant to this review. No affiliation is required.
+      options:
+        - Software engineering
+        - Mechanical or systems engineering
+        - Numerical computing
+        - Research methods and reproducibility
+        - Safety and responsible-use review
+        - Student or independent reviewer
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: review_scope
+    attributes:
+      label: Primary review scope
+      options:
+        - Software architecture and maintainability
+        - Code quality, error handling, and testing
+        - Numerical implementation and software robustness
+        - Reproducibility and dependency setup
+        - Documentation and stated limitations
+        - Safety and responsible-use documentation
+        - Overall repository quality
+    validations:
+      required: true
+  - type: dropdown
+    id: assessment
+    attributes:
+      label: Overall assessment
+      options:
+        - Suitable for further review
+        - Minor revisions recommended
+        - Substantial revisions recommended
+        - Unable to assess with the available information
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Executive summary
+      description: Summarize the main strengths, concerns, and limits of your review.
+    validations:
+      required: true
+  - type: textarea
+    id: strengths
+    attributes:
+      label: Strengths
+      description: Identify aspects that are clear, maintainable, reproducible, or well documented.
+    validations:
+      required: false
+  - type: textarea
+    id: major_findings
+    attributes:
+      label: Major findings
+      description: Describe issues that materially affect software quality, reproducibility, documentation, or safe use. Reference file paths and line numbers where possible.
+    validations:
+      required: false
+  - type: textarea
+    id: minor_findings
+    attributes:
+      label: Minor findings
+      description: List smaller clarity, usability, testing, or maintenance improvements.
+    validations:
+      required: false
+  - type: textarea
+    id: reproducibility
+    attributes:
+      label: Reproducibility and evidence
+      description: Include software environment, safe synthetic test conditions, and steps another reviewer can use to reproduce the observation. Do not include live-fire procedures, real-world targeting data, or operational weapon parameters.
+    validations:
+      required: false
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Limitations of this review
+      description: State anything you could not verify, including unavailable code, hardware, datasets, or test environments.
+    validations:
+      required: false
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Add relevant public software, engineering, or research references.
+    validations:
+      required: false
+  - type: checkboxes
+    id: declarations
+    attributes:
+      label: Reviewer checklist
+      options:
+        - label: I have identified the version or commit I reviewed.
+          required: true
+        - label: My feedback is limited to software quality, reproducibility, documentation, or responsible-use safeguards.
+          required: true
+        - label: I have not included personal data, credentials, private datasets, or sensitive operational information.
+          required: true
+        - label: I understand this public review is not a formal certification or endorsement.
+          required: true
