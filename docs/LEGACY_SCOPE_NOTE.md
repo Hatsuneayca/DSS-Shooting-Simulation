@@ -1,11 +1,11 @@
 # Legacy Scope Note
 
-An earlier development iteration in this repository explored a different simulation direction. Its source file was removed from the current `main` branch when the project scope was refocused.
+An earlier DASS development iteration explored a different simulation direction. Its source code is no longer part of the active `main` branch because it does not match the current product and research scope.
 
-**The original file is preserved in Git history and can be viewed at this historical revision:** [Legacy DASS source (historical commit)](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/blob/352a430fcff12c07a191805128de4d8b5793e8c9/Dass%20Balistics).
+**The original v4 source is preserved in a dedicated archive branch:** [legacy-v4-archive](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/tree/legacy-v4-archive). The file can be opened directly at [Dass Balistics](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/blob/legacy-v4-archive/Dass%20Balistics).
 
-This was a removal from the active branch, not a purge of the repository's commit history. The exact historical file remains retrievable at the link above.
+The archive branch preserves the earlier repository snapshot. It does not form part of the active product or proposal.
 
-The current project scope is a modular device-management and training platform for dedicated inert, non-functional training props. Active development is limited to enclosure design, serviceability, power and device-health monitoring, local software, session records, verification, and product feasibility.
+The current project scope is a modular device-management and training platform for dedicated inert, non-functional training props. Active development is limited to enclosure design, serviceability, power and device-health monitoring, local software, session records, verification and product feasibility.
 
-The legacy source is retained for project provenance only. It is not an active component, validated model, or part of the current product proposal.
+The legacy source is retained for project provenance and historical reference only. It is not an active component, validated model, or part of the current product proposal.
