@@ -19,7 +19,7 @@ The first demonstrator is deliberately bounded:
 1. One dedicated inert, non-functional training prop as the physical host.
 2. A removable, serviceable electronics enclosure.
 3. Basic power and device-health monitoring.
-4. A local desktop application for device status, session metadata and CSV reports.
+4. A local software demonstrator for device status, session metadata, synthetic scenario analysis and CSV reports; a graphical desktop application remains a later development milestone.
 5. A documented test plan and costed bill of materials.
 
 The initial demonstrator will not include multi-site deployment, cloud services or a production-ready product.
