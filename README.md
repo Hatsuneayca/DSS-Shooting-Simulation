@@ -74,6 +74,10 @@ python dass_ballistics_v4.py
 
 Outputs: trajectory CSV, Monte Carlo scatter CSV, summary plot.
 
+## Peer Review Process
+
+For independent, structured evaluation, see the [Peer Review Process](PEER_REVIEW.md) and submit a [Peer Review](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/issues/new?template=peer-review.yml). Reviews should identify the exact commit examined and focus on software quality, reproducibility, documentation, and responsible-use safeguards.
+
 ## Feedback & Technical Review
 
 Feedback is welcome from engineers, researchers, and users reviewing the DASS repository. To keep reports actionable, please use one of the structured GitHub issue forms:
