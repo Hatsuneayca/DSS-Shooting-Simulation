@@ -6,7 +6,7 @@ The earlier DASS source was a substantial software experiment. When the active p
 
 The original source can be viewed at this historical revision:
 
-[Legacy DASS source — historical commit](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/blob/352a430fcff12c07a191805128de4d8b5793e8c9/Dass%20Balistics)
+[Legacy DASS source — historical commit](https://github.com/Hatsuneayca/DSS-Shooting-Simulation/blob/legacy-v4-archive/Dass%20Balistics)
 
 This note records which general software-engineering ideas remain useful and how they have been redirected into the current project.
 
