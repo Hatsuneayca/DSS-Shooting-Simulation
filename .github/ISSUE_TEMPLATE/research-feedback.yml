@@ -1,22 +1,25 @@
 name: Research Feedback
-description: Share academic feedback on methodology, validation, reproducibility, or references.
+description: Share academic feedback on DASS requirements, product design, verification, or feasibility.
 title: "[Research Feedback]: "
 body:
   - type: markdown
     attributes:
       value: |
-        Use this form for research-oriented comments that can help make the project's assumptions, methods, and limitations clearer and more reproducible.
+        Use this form for research-oriented comments on DASS as a modular training-device and device-management concept for dedicated inert, non-functional training props.
   - type: dropdown
     id: topic
     attributes:
       label: Feedback topic
       options:
-        - Methodology
-        - Numerical implementation
-        - Validation design
-        - Reproducibility
-        - Model assumptions and limitations
-        - References and related work
+        - Literature and comparable systems
+        - Product requirements and architecture
+        - Mechanical enclosure and materials
+        - Modularity and serviceability
+        - Power and electronics integration
+        - Software and data management
+        - Verification and validation
+        - Cost and manufacturability
+        - Privacy and responsible use
         - Other
     validations:
       required: true
@@ -24,28 +27,25 @@ body:
     id: observation
     attributes:
       label: Observation or research question
-      description: Describe the point you would like the project to consider.
     validations:
       required: true
   - type: textarea
     id: rationale
     attributes:
       label: Supporting rationale
-      description: Explain why this matters and how it relates to the stated scope of the project.
     validations:
       required: true
   - type: textarea
     id: evidence
     attributes:
-      label: Supporting evidence or suggested references
-      description: Include citations, links, or reproducible observations where possible.
+      label: Supporting evidence or references
+      description: Include public papers, standards, supplier documentation, or reproducible software observations.
     validations:
       required: false
   - type: textarea
     id: reproducibility
     attributes:
       label: Reproducibility notes
-      description: Include relevant environment details, assumptions, or steps needed to verify your observation.
     validations:
       required: false
   - type: checkboxes
@@ -53,7 +53,7 @@ body:
     attributes:
       label: Submission checklist
       options:
-        - label: This feedback concerns the project's software, simulation, documentation, or research methodology.
+        - label: This feedback concerns the inert training-device, software, product-design, or research scope.
           required: true
-        - label: I have avoided including personal data, credentials, or sensitive operational information.
+        - label: I have avoided personal data, credentials, and sensitive operational information.
           required: true
