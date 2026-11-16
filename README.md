@@ -91,10 +91,10 @@ python -m unittest discover -s tests -v
 Optional parameters:
 
 ```bash
-python -m software.dass_telemetry_demo --duration 120 --interval 5 --seed 17 --output outputs/demo_session.csv
+python -m software.dass_telemetry_demo --duration 120 --interval 5 --seed 17 --runs 50 --output-dir outputs
 ```
 
-The script creates fictional battery, enclosure-temperature, connection and sensor-health records, plus repeated scenario-analysis summaries using independent seeds. It exports four CSV files. The output is repeatable for fixed seeds. It does not connect to or control physical hardware.
+The script creates fictional battery, enclosure-temperature, connection and sensor-health records, plus repeated scenario-analysis summaries using independent seeds. It exports session telemetry, a session summary, individual scenario trials and an aggregate scenario summary as four CSV files. The output is repeatable for fixed seeds. It does not connect to or control physical hardware.
 
 ## 6. Research and validation
 
